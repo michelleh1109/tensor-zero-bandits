@@ -1,0 +1,2219 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title> How TensorZero is Fixing Your A/B Testing with Bandits </title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Space+Mono:wght@400;700&display=swap"
+    rel="stylesheet" />
+
+  <style>
+    /* ─── Reset & tokens ─────────────────────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --bg: #ffffff;
+      --bg-1: #F7F8FA;
+      --bg-2: #F0F2F5;
+      --text: #0D1117;
+      --text-2: #57606A;
+      --text-3: #8C959F;
+      --border: #D8DEE4;
+      --border-2: #EAEEF2;
+
+      --accent: #ff4f01;
+      --accent-2: #d94000;
+      --accent-bg: #FFF3EE;
+      --accent-mid: #FFB89A;
+
+      --ok: #1A7F37;
+      --ok-bg: #DAFBE1;
+      --ok-border: #82CFAA;
+
+      --warn: #9A6700;
+      --warn-bg: #FFF3CD;
+      --warn-border: #FFCA28;
+
+      --danger: #CF222E;
+      --danger-bg: #FFEBE9;
+      --danger-border: #FF8182;
+
+      --v0: #6366F1;
+      /* indigo  */
+      --v1: #10B981;
+      /* emerald */
+      --v2: #F59E0B;
+      /* amber   */
+      --v3: #EF4444;
+      /* red     */
+
+      --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --mono: 'JetBrains Mono', 'SF Mono', 'Consolas', monospace;
+
+      --r: 6px;
+      --r-lg: 12px;
+      --max: 720px;
+      --wide: 900px;
+    }
+
+    html {
+      font-size: 16px;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.75;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ─── Typography ─────────────────────────────────────────────────── */
+    h1,
+    h2,
+    h3,
+    h4 {
+      font-family: 'Space Mono', monospace;
+      font-weight: 700;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      color: #ff4f01;
+    }
+
+    h1 {
+      font-size: 2.25rem;
+      letter-spacing: -0.035em;
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      margin-bottom: 12px;
+    }
+
+    h3 {
+      font-size: 1.125rem;
+      color: #374151;
+    }
+
+    p {
+      margin-bottom: 1.2rem;
+      color: var(--text-2);
+    }
+
+    p:last-child {
+      margin-bottom: 0;
+    }
+
+    p strong {
+      color: var(--text);
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    code {
+      font-family: var(--mono);
+      font-size: 0.83em;
+      background: var(--bg-1);
+      border: 1px solid var(--border-2);
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: var(--text);
+    }
+
+    ul,
+    ol {
+      padding-left: 1.4rem;
+      color: var(--text-2);
+    }
+
+    li {
+      margin-bottom: 6px;
+    }
+
+    /* ─── Nav ────────────────────────────────────────────────────────── */
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border-2);
+    }
+
+    .nav-inner {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 24px;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .nav-brand {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+
+    .nav-brand:hover {
+      text-decoration: none;
+    }
+
+    .nav-brand svg {
+      flex-shrink: 0;
+    }
+
+    .nav-tag {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      background: var(--accent-bg);
+      color: var(--accent);
+      padding: 3px 10px;
+      border-radius: 100px;
+    }
+
+    /* ─── Layout helpers ─────────────────────────────────────────────── */
+    .wrap {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .wrap-wide {
+      max-width: var(--wide);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .section {
+      padding: 56px 24px;
+      max-width: var(--max);
+      margin: 0 auto;
+      border-bottom: 1px solid var(--border-2);
+    }
+
+    .section-wide {
+      padding: 56px 24px;
+      max-width: var(--wide);
+      margin: 0 auto;
+      border-bottom: 1px solid var(--border-2);
+    }
+
+    .section-wide .prose {
+      max-width: var(--max);
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    .section:last-child,
+    .section-wide:last-child {
+      border-bottom: none;
+    }
+
+    .mt-8 {
+      margin-top: 8px;
+    }
+
+    .mt-12 {
+      margin-top: 12px;
+    }
+
+    .mt-20 {
+      margin-top: 20px;
+    }
+
+    .mt-32 {
+      margin-top: 32px;
+    }
+
+    .mb-8 {
+      margin-bottom: 8px;
+    }
+
+    .gap-sm {
+      gap: 8px;
+    }
+
+    /* ─── Post header ────────────────────────────────────────────────── */
+    .post-header {
+      padding: 72px 24px 56px;
+      max-width: var(--max);
+      margin: 0 auto;
+      border-bottom: 1px solid var(--border-2);
+    }
+
+    .post-eyebrow {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .post-eyebrow-dot {
+      width: 4px;
+      height: 4px;
+      background: var(--accent);
+      border-radius: 50%;
+    }
+
+    .post-title {
+      margin-bottom: 18px;
+      color: #ff4f01;
+      font-family: 'Space Mono', monospace;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .post-lead {
+      font-size: 1.175rem;
+      line-height: 1.65;
+      color: var(--text-2);
+      margin-bottom: 24px;
+    }
+
+    .post-meta {
+      font-size: 0.8125rem;
+      color: var(--text-3);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .meta-dot {
+      width: 3px;
+      height: 3px;
+      background: var(--text-3);
+      border-radius: 50%;
+    }
+
+    .meta-badge {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      padding: 2px 9px;
+      border-radius: 100px;
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: var(--text-2);
+    }
+
+    /* ─── Callouts ───────────────────────────────────────────────────── */
+    .callout {
+      border-radius: var(--r);
+      padding: 18px 22px;
+      margin: 28px 0;
+      border: 1px solid;
+    }
+
+    .callout-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 6px;
+    }
+
+    .callout p {
+      margin-bottom: 0;
+    }
+
+    .callout-key,
+    .callout-ok,
+    .callout-warn,
+    .callout-bad {
+      background: rgba(255, 79, 1, 0.06);
+      border-color: rgba(255, 79, 1, 0.25);
+    }
+
+    .callout-key .callout-label,
+    .callout-ok .callout-label,
+    .callout-warn .callout-label,
+    .callout-bad .callout-label {
+      color: #ff4f01;
+    }
+
+    /* ─── Stat cards ─────────────────────────────────────────────────── */
+    .stat-row {
+      display: flex;
+      gap: 14px;
+      margin: 28px 0;
+      flex-wrap: wrap;
+    }
+
+    .stat-card {
+      flex: 1;
+      min-width: 140px;
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 18px 20px;
+    }
+
+    .stat-num {
+      font-size: 1.875rem;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .stat-num.danger {
+      color: var(--danger);
+    }
+
+    .stat-num.ok {
+      color: var(--accent);
+    }
+
+    .stat-num.accent {
+      color: var(--accent);
+    }
+
+    .stat-desc {
+      font-size: 0.8125rem;
+      color: var(--text-2);
+      line-height: 1.4;
+    }
+
+    .stat-desc strong {
+      color: var(--text);
+    }
+
+    /* ─── Two-column ─────────────────────────────────────────────────── */
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 28px 0;
+    }
+
+    /* ─── Diagram panels ─────────────────────────────────────────────── */
+    .diagram-wrap {
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      margin: 36px 0;
+    }
+
+    .diagram-bar {
+      display: flex;
+      align-items: center;
+      background: var(--bg-1);
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      gap: 6px;
+    }
+
+    .db-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .diagram-inner {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .diagram-cell {
+      padding: 28px 24px;
+    }
+
+    .diagram-cell+.diagram-cell {
+      border-left: 1px solid var(--border);
+    }
+
+    .diagram-cell-label {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 16px;
+    }
+
+    .diagram-cell-label.warn {
+      color: var(--warn);
+    }
+
+    .diagram-cell-label.danger {
+      color: var(--danger);
+    }
+
+    .diagram-caption {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-top: 14px;
+    }
+
+    .diagram-sub {
+      font-size: 0.75rem;
+      color: var(--text-3);
+      margin-top: 3px;
+    }
+
+    /* ─── Sim box ────────────────────────────────────────────────────── */
+    .sim-box {
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      margin: 32px 0;
+      background: var(--bg);
+    }
+
+    .sim-top {
+      background: var(--bg-1);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .sim-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sim-indicator {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .sim-title {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .sim-body {
+      padding: 22px 20px;
+    }
+
+    @keyframes pulse {
+
+      0%,
+      100% {
+        opacity: 1;
+      }
+
+      50% {
+        opacity: 0.4;
+      }
+    }
+
+    /* ─── Form controls ──────────────────────────────────────────────── */
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      font-family: var(--font);
+      font-size: 0.8125rem;
+      font-weight: 600;
+      padding: 7px 15px;
+      border-radius: var(--r);
+      border: 1px solid;
+      cursor: pointer;
+      transition: all 0.12s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      line-height: 1;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-2);
+      border-color: var(--accent-2);
+    }
+
+    .btn-secondary {
+      background: var(--bg);
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    .btn-secondary:hover {
+      background: var(--bg-1);
+    }
+
+    .btn-sm {
+      font-size: 0.75rem;
+      padding: 5px 11px;
+    }
+
+    .toggle-group {
+      display: flex;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      overflow: hidden;
+      background: var(--bg);
+    }
+
+    .tgl {
+      font-family: var(--font);
+      font-size: 0.8125rem;
+      font-weight: 500;
+      padding: 6px 14px;
+      border: none;
+      background: transparent;
+      color: var(--text-2);
+      cursor: pointer;
+      transition: all 0.12s;
+    }
+
+    .tgl.on {
+      background: var(--accent);
+      color: white;
+    }
+
+    select {
+      font-family: var(--font);
+      font-size: 0.8125rem;
+      padding: 6px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      background: var(--bg);
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    /* ─── Variant slider rows ────────────────────────────────────────── */
+    .variant-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin: 20px 0;
+    }
+
+    .variant-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 48px;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .variant-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .v-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--border-2);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid white;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+      cursor: pointer;
+    }
+
+    .range-val {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      font-family: var(--mono);
+      color: var(--text);
+      text-align: right;
+      min-width: 36px;
+    }
+
+    /* ─── Alloc bars ─────────────────────────────────────────────────── */
+    .alloc-section {
+      margin-top: 24px;
+    }
+
+    .alloc-rows {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .alloc-row {
+      display: grid;
+      grid-template-columns: 110px 1fr 44px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .alloc-name {
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--text-2);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .alloc-bar-bg {
+      height: 22px;
+      background: var(--bg-2);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .alloc-bar {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+      min-width: 2px;
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
+    }
+
+    .alloc-pct {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      font-family: var(--mono);
+      color: var(--text);
+      text-align: right;
+    }
+
+    .leader-tag {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      background: var(--ok-bg);
+      color: var(--ok);
+      border: 1px solid var(--ok-border);
+      padding: 2px 6px;
+      border-radius: 100px;
+      margin-left: 4px;
+    }
+
+    /* ─── Race stats ─────────────────────────────────────────────────── */
+    .race-stats {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+
+    .race-stat {
+      flex: 1;
+      min-width: 120px;
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 12px 14px;
+    }
+
+    .race-stat-label {
+      font-size: 0.75rem;
+      color: var(--text-3);
+      margin-bottom: 3px;
+    }
+
+    .race-stat-val {
+      font-size: 1.375rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .race-stat-val.ok {
+      color: var(--ok);
+    }
+
+    .race-stat-val.accent {
+      color: var(--accent);
+    }
+
+    .winner-bar {
+      display: none;
+      margin-top: 16px;
+      background: var(--ok-bg);
+      border: 1px solid var(--ok-border);
+      border-radius: var(--r);
+      padding: 12px 16px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--ok);
+      align-items: center;
+      gap: 8px;
+    }
+
+    .winner-bar.show {
+      display: flex;
+    }
+
+    /* ─── Chart wrapper ──────────────────────────────────────────────── */
+    .chart-wrap {
+      position: relative;
+      margin-top: 20px;
+    }
+
+    .chart-wrap canvas {
+      display: block;
+    }
+
+    /* ─── Duration estimator ─────────────────────────────────────────── */
+    .est-wrap {
+      margin-top: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .est-col {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 18px 20px;
+      text-align: center;
+    }
+
+    .est-col.highlight {
+      background: var(--accent-bg);
+      border-color: var(--accent-mid);
+    }
+
+    .est-num {
+      font-size: 2.25rem;
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 1;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+
+    .est-col.highlight .est-num {
+      color: var(--accent);
+    }
+
+    .est-label {
+      font-size: 0.8125rem;
+      color: var(--text-2);
+    }
+
+    .est-badge {
+      display: inline-block;
+      margin-top: 8px;
+      background: var(--ok-bg);
+      color: var(--ok);
+      border: 1px solid var(--ok-border);
+      border-radius: 100px;
+      padding: 2px 10px;
+      font-size: 0.72rem;
+      font-weight: 700;
+    }
+
+    .delta-label,
+    .eps-label {
+      font-size: 0.875rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .param-hint {
+      font-size: 0.8125rem;
+      color: var(--text-3);
+      margin-top: 4px;
+    }
+
+    /* ─── Code block ─────────────────────────────────────────────────── */
+    .code-block {
+      background: #1E1E2E;
+      border-radius: var(--r-lg);
+      overflow: hidden;
+      margin: 32px 0;
+      font-family: var(--mono);
+    }
+
+    .code-bar {
+      background: #2A2A3D;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      padding: 11px 18px;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .code-bar-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+
+    .code-filename {
+      font-size: 0.75rem;
+      color: #8B8BA7;
+      margin-left: 4px;
+    }
+
+    .code-content {
+      padding: 22px 20px;
+      font-size: 0.875rem;
+      line-height: 1.9;
+      overflow-x: auto;
+    }
+
+    .code-line {
+      display: block;
+      white-space: pre;
+    }
+
+    .code-line.hl {
+      background: rgba(255, 79, 1, 0.12);
+      margin: 0 -20px;
+      padding: 0 20px;
+      border-left: 3px solid var(--accent);
+    }
+
+    .code-section { transition: opacity 0.3s ease; }
+    .code-section.cs-dimmed { opacity: 0.2; }
+
+    .ct {
+      color: #CDD6F4;
+    }
+
+    /* default text */
+    .ck {
+      color: #89B4FA;
+    }
+
+    /* key */
+    .cv {
+      color: #A6E3A1;
+    }
+
+    /* value (green) */
+    .cs {
+      color: #F38BA8;
+    }
+
+    /* string (red) */
+    .cc {
+      color: #6C7086;
+      font-style: italic;
+    }
+
+    /* comment */
+    .ch {
+      color: #F9E2AF;
+    }
+
+    /* section header */
+    .code-annotations {
+      padding: 0 20px 20px;
+    }
+
+    .annotation {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 0.8125rem;
+      color: #8B8BA7;
+      margin-bottom: 10px;
+    }
+
+    .ann-tag {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      background: rgba(255, 79, 1, 0.25);
+      color: #FFB89A;
+      padding: 2px 7px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    /* ─── NER panels ─────────────────────────────────────────────────── */
+    .ner-panels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin: 32px 0;
+    }
+
+    .ner-panel {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 20px;
+    }
+
+    .ner-panel-eyebrow {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-3);
+      margin-bottom: 12px;
+    }
+
+    .ner-annotation {
+      font-size: 0.75rem;
+      color: var(--text-3);
+      margin-top: 10px;
+      text-align: center;
+    }
+
+    .ner-annotation strong {
+      color: var(--text-2);
+    }
+
+    /* ─── CTA section ────────────────────────────────────────────────── */
+    .cta-box {
+      background: var(--bg-1);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 40px 36px;
+      margin: 48px 0 0;
+      text-align: center;
+    }
+
+    .cta-box h3 {
+      margin-bottom: 10px;
+    }
+
+    .cta-box>p {
+      max-width: 460px;
+      margin: 0 auto 28px;
+      color: var(--text-2);
+    }
+
+    .cta-links {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .cta-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 10px 20px;
+      border-radius: var(--r);
+      font-size: 0.875rem;
+      font-weight: 600;
+      border: 1px solid;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.12s;
+    }
+
+    .cta-link-primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: white;
+    }
+
+    .cta-link-primary:hover {
+      background: var(--accent-2);
+      border-color: var(--accent-2);
+      text-decoration: none;
+    }
+
+    .cta-link-secondary {
+      background: var(--bg);
+      border-color: var(--border);
+      color: var(--text);
+    }
+
+    .cta-link-secondary:hover {
+      background: var(--bg-1);
+      text-decoration: none;
+    }
+
+    /* ─── Divider ────────────────────────────────────────────────────── */
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border-2);
+      margin: 28px 0;
+    }
+
+    /* ─── Slot Machine Game ──────────────────────────────────────── */
+    .sm-machines-row {
+      display: flex;
+      gap: 18px;
+      justify-content: center;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      margin: 24px 0 0;
+    }
+
+    .sm-col {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .sm-dist-label {
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--text-3);
+      text-align: center;
+    }
+
+    .sm-dist-canvas {
+      display: block;
+    }
+
+    .sm-machine {
+      width: 112px;
+      background: var(--smc, #888);
+      border: 3px solid #1a1a2e;
+      border-radius: 10px 10px 8px 8px;
+      padding: 10px 10px 12px;
+      position: relative;
+      cursor: pointer;
+      user-select: none;
+      box-shadow: 0 5px 0 #1a1a2e;
+      transition: transform 0.1s, box-shadow 0.1s;
+    }
+
+    .sm-machine:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 7px 0 #1a1a2e;
+    }
+
+    .sm-machine:active {
+      transform: translateY(3px);
+      box-shadow: 0 2px 0 #1a1a2e;
+    }
+
+    .sm-label-top {
+      font-size: 0.65rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: rgba(0, 0, 0, 0.38);
+      text-align: center;
+      margin-bottom: 8px;
+    }
+
+    .sm-window {
+      background: #1a1a2e;
+      border: 2px solid rgba(255, 255, 255, 0.55);
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 7px 3px;
+      margin-bottom: 6px;
+    }
+
+    .sm-reel {
+      font-size: 1.25rem;
+      font-weight: 900;
+      color: #fff;
+      width: 26px;
+      text-align: center;
+      font-family: var(--mono);
+      line-height: 1;
+    }
+
+    .sm-win-div {
+      color: rgba(255, 255, 255, 0.2);
+      font-size: 0.8rem;
+    }
+
+    .sm-flash {
+      font-size: 0.78rem;
+      font-weight: 700;
+      text-align: center;
+      height: 18px;
+      line-height: 18px;
+      border-radius: 4px;
+    }
+
+    .sm-flash-win {
+      color: #1A7F37;
+      background: #DAFBE1;
+    }
+
+    .sm-flash-miss {
+      color: rgba(0, 0, 0, 0.3);
+    }
+
+    .sm-stat {
+      font-size: 0.6rem;
+      font-weight: 600;
+      color: rgba(0, 0, 0, 0.38);
+      text-align: center;
+      margin-top: 5px;
+      min-height: 12px;
+    }
+
+    .sm-lever-wrap {
+      position: absolute;
+      right: -17px;
+      top: 14px;
+    }
+
+    .sm-arm {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transform-origin: top center;
+      transition: transform 0.22s ease-out;
+    }
+
+    .sm-arm-down {
+      transform: rotate(38deg);
+    }
+
+    .sm-arm-shaft {
+      width: 5px;
+      height: 36px;
+      background: #1a1a2e;
+      border-radius: 3px;
+    }
+
+    .sm-arm-ball {
+      width: 13px;
+      height: 13px;
+      background: #ebebeb;
+      border: 3px solid #1a1a2e;
+      border-radius: 50%;
+      margin-top: 3px;
+    }
+
+    .sm-score-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 12px 18px;
+      background: var(--bg-1);
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .sm-score-item {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+    }
+
+    .sm-score-key {
+      font-size: 0.72rem;
+      color: var(--text-3);
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .sm-score-num {
+      font-size: 1.125rem;
+      font-weight: 700;
+      font-family: var(--mono);
+      color: var(--text);
+    }
+
+    .sm-score-msg {
+      flex: 1;
+      font-size: 0.8rem;
+      color: var(--text-2);
+      text-align: right;
+      min-width: 160px;
+    }
+
+    .sm-person-wrap {
+      display: flex;
+      justify-content: center;
+      padding: 6px 0 2px;
+    }
+
+    @media (max-width: 640px) {
+      .sm-machines-row {
+        gap: 10px;
+      }
+
+      .sm-machine {
+        width: 82px;
+      }
+
+      .sm-reel {
+        font-size: 1rem;
+        width: 20px;
+      }
+    }
+
+    /* ─── Sidecar section (75 vw) ───────────────────────────────── */
+    .section-sidecar {
+      padding: 56px 24px;
+      max-width: 75vw;
+      margin: 0 auto;
+      border-bottom: 1px solid var(--border-2);
+    }
+
+    /* ─── Sidecar layout (Stripe-style) ─────────────────────────── */
+    .sidecar-layout {
+      display: grid;
+      grid-template-columns: 200px 1fr;
+      gap: 48px;
+      align-items: start;
+      margin-top: 36px;
+    }
+
+    .sidecar-sticky {
+      position: sticky;
+      top: 72px;
+    }
+
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 28px;
+    }
+
+    .step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      width: 26px;
+      height: 26px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-size: 0.72rem;
+      font-weight: 700;
+      font-family: var(--mono);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .step-body h4 {
+      font-size: 0.9375rem;
+      font-weight: 700;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      margin-bottom: 5px;
+      letter-spacing: -0.02em;
+    }
+
+    .step-body p {
+      font-size: 0.875rem;
+      margin-bottom: 0;
+    }
+
+    @media (max-width: 800px) {
+      .section-sidecar {
+        max-width: 100%;
+        padding: 56px 24px;
+      }
+
+      .sidecar-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .sidecar-sticky {
+        position: static;
+      }
+    }
+
+    /* ─── Responsive ─────────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      h1 {
+        font-size: 1.75rem;
+      }
+
+      .post-title {
+        font-size: 1.75rem;
+      }
+
+      .two-col {
+        grid-template-columns: 1fr;
+      }
+
+      .diagram-inner {
+        grid-template-columns: 1fr;
+      }
+
+      .diagram-cell+.diagram-cell {
+        border-left: none;
+        border-top: 1px solid var(--border);
+      }
+
+      .ner-panels {
+        grid-template-columns: 1fr;
+      }
+
+      .est-wrap {
+        grid-template-columns: 1fr;
+      }
+
+      .variant-row {
+        grid-template-columns: 110px 1fr 40px;
+      }
+
+      .alloc-row {
+        grid-template-columns: 90px 1fr 40px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ══════════════════════════════════════════════════════════════════
+     NAV
+═══════════════════════════════════════════════════════════════════ -->
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="nav-brand" href="#">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+          <rect width="20" height="20" rx="5" fill="#ff4f01" />
+          <path d="M5 10h10M10 5v10" stroke="white" stroke-width="2.2" stroke-linecap="round" />
+        </svg>
+        TensorZero
+      </a>
+      <span class="nav-tag">Experimentation</span>
+    </div>
+  </nav>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════
+     HEADER
+═══════════════════════════════════════════════════════════════════ -->
+  <header class="post-header">
+    <div class="post-eyebrow">
+      <span class="post-eyebrow-dot"></span>
+      Deep Dive &nbsp;·&nbsp; Experimentation
+    </div>
+    <h1 class="post-title"> How TensorZero is Fixing Your A/B Testing with Bandits</h1>
+    <p class="post-lead">
+      Traditional A/B testing could be leading to false results. TensorZero's adaptive experimentation
+      confidently chooses the best variants and frees up resourcing in just 3 lines of code.
+    </p>
+    <div class="post-meta">
+      <span>TensorZero Team</span>
+      <span class="meta-dot"></span>
+      <span>5-10 min read</span>
+      <span class="meta-dot"></span>
+      <span class="meta-badge">Interactive demos included</span>
+    </div>
+  </header>
+
+  <img src="bandit.png" alt="Bandit Sketch" style="display:block;max-width:50%;margin:20px auto" />
+
+  <!-- ══════════════════════════════════════════════════════════════════
+     SECTION 1 — THE PROBLEM
+═══════════════════════════════════════════════════════════════════ -->
+  <section class="section" id="problem">
+
+    <h2>Traditional A/B testing experimentation has two limitations:</h2>
+    <p>
+      When we don’t know the underlying truth in the real-world i.e., which option
+      A or B will improve the user experience, experimentation (A/B testing) with
+      production traffic is the most reliable way to test the best prompts and
+      models for your task. Yet, traditional A/B testing methods have fundamental limitations.
+    </p>
+
+    <!-- Two-panel diagram -->
+    <div class="diagram-wrap">
+      <div class="diagram-bar">
+        <div class="db-dot" style="background:#FF5F57"></div>
+        <div class="db-dot" style="background:#FEBC2E"></div>
+        <div class="db-dot" style="background:#28C840"></div>
+        <span style="font-size:0.78rem;color:var(--text-3);margin-left:6px">Experiment failure modes</span>
+      </div>
+      <div class="diagram-inner">
+
+        <!-- LEFT: Waiting game -->
+        <div class="diagram-cell">
+          <div class="diagram-cell-label warn">Problem 1 &nbsp;·&nbsp; Fixed Sample Sizes</div>
+          <svg viewBox="0 0 280 170" fill="none" xmlns="http://www.w3.org/2000/svg" role="img"
+            aria-label="Dashboard showing Day 14 of 17 with two nearly-identical bars">
+            <!-- Monitor -->
+            <rect x="30" y="16" width="220" height="130" rx="8" fill="#F7F8FA" stroke="#D8DEE4" stroke-width="1.5" />
+            <rect x="30" y="16" width="220" height="28" rx="8" fill="#EAEEF2" stroke="#D8DEE4" stroke-width="1.5" />
+            <rect x="30" y="36" width="220" height="8" fill="#EAEEF2" />
+            <!-- Browser dots -->
+            <circle cx="47" cy="30" r="4" fill="#FF5F57" />
+            <circle cx="61" cy="30" r="4" fill="#FEBC2E" />
+            <circle cx="75" cy="30" r="4" fill="#28C840" />
+            <!-- URL bar -->
+            <rect x="90" y="23" width="140" height="14" rx="3" fill="white" stroke="#D8DEE4" stroke-width="1" />
+            <text x="160" y="33" font-family="monospace" font-size="7" fill="#8C959F"
+              text-anchor="middle">experiment-dashboard.io</text>
+
+            <!-- Day indicator -->
+            <rect x="50" y="54" width="90" height="16" rx="3" fill="#FFF3CD" stroke="#FFCA28" stroke-width="1" />
+            <text x="95" y="66" font-family="Inter,sans-serif" font-size="8.5" font-weight="600" fill="#9A6700"
+              text-anchor="middle">Day 14 of 17</text>
+
+            <!-- Bar A -->
+            <rect x="50" y="82" width="80" height="14" rx="2" fill="#EAEEF2" />
+            <rect x="50" y="82" width="58" height="14" rx="2" fill="#6366F1" opacity="0.8" />
+            <text x="50" y="79" font-family="Inter,sans-serif" font-size="7.5" font-weight="600" fill="#57606A">Variant
+              A</text>
+            <text x="113" y="92" font-family="monospace" font-size="7.5" fill="#57606A">72%</text>
+            <!-- Bar B -->
+            <rect x="50" y="106" width="80" height="14" rx="2" fill="#EAEEF2" />
+            <rect x="50" y="106" width="62" height="14" rx="2" fill="#10B981" opacity="0.8" />
+            <text x="50" y="103" font-family="Inter,sans-serif" font-size="7.5" font-weight="600" fill="#57606A">Variant
+              B</text>
+            <text x="117" y="116" font-family="monospace" font-size="7.5" fill="#57606A">78%</text>
+
+            <!-- p-value note -->
+            <text x="155" y="97" font-family="monospace" font-size="7" fill="#8C959F">p = 0.12 😬</text>
+            <text x="155" y="110" font-family="monospace" font-size="7" fill="#8C959F">need p &lt; 0.05</text>
+
+            <!-- Speech bubble -->
+            <path d="M195 50 L240 50 L240 75 L220 75 L215 82 L213 75 L195 75 Z" fill="white" stroke="#D8DEE4"
+              stroke-width="1.2" />
+            <text x="217" y="62" font-family="Inter,sans-serif" font-size="7.5" font-weight="500" fill="#57606A"
+              text-anchor="middle">just</text>
+            <text x="217" y="72" font-family="Inter,sans-serif" font-size="7.5" font-weight="600" fill="#9A6700"
+              text-anchor="middle">3 more days</text>
+          </svg>
+          <div class="diagram-caption">Risks</div>
+          <div class="diagram-sub">Undersampling = Inconclusive data. Over-sampling = Wasted resources.</div>
+        </div>
+
+        <!-- RIGHT: P-hacking trap -->
+        <div class="diagram-cell">
+          <div class="diagram-cell-label danger">Problem 2 &nbsp;·&nbsp; P-Hacking via Peeking</div>
+          <svg viewBox="0 0 280 170" fill="none" xmlns="http://www.w3.org/2000/svg" role="img"
+            aria-label="Line chart showing false positive rate climbing above the 5% target as you check more often">
+            <!-- Grid background -->
+            <line x1="45" y1="20" x2="45" y2="145" stroke="#EAEEF2" stroke-width="1" />
+            <line x1="45" y1="145" x2="260" y2="145" stroke="#EAEEF2" stroke-width="1" />
+            <!-- Horizontal grid lines -->
+            <line x1="45" y1="50" x2="260" y2="50" stroke="#EAEEF2" stroke-width="1" stroke-dasharray="3,3" />
+            <line x1="45" y1="80" x2="260" y2="80" stroke="#EAEEF2" stroke-width="1" stroke-dasharray="3,3" />
+            <line x1="45" y1="110" x2="260" y2="110" stroke="#EAEEF2" stroke-width="1" stroke-dasharray="3,3" />
+            <!-- Y axis labels -->
+            <text x="38" y="54" font-family="monospace" font-size="7.5" fill="#8C959F" text-anchor="end">25%</text>
+            <text x="38" y="84" font-family="monospace" font-size="7.5" fill="#8C959F" text-anchor="end">15%</text>
+            <text x="38" y="114" font-family="monospace" font-size="7.5" fill="#8C959F" text-anchor="end">5%</text>
+            <text x="38" y="147" font-family="monospace" font-size="7.5" fill="#8C959F" text-anchor="end">0%</text>
+
+            <!-- Target line at 5% (y=110) -->
+            <line x1="45" y1="110" x2="260" y2="110" stroke="#1A7F37" stroke-width="1.5" stroke-dasharray="5,3"
+              opacity="0.7" />
+            <rect x="195" y="100" width="62" height="13" rx="2" fill="#DAFBE1" />
+            <text x="226" y="109.5" font-family="Inter,sans-serif" font-size="7" font-weight="600" fill="#1A7F37"
+              text-anchor="middle">target: 5%</text>
+
+            <!-- Actual false positive rate climbing -->
+            <!-- Points: (1,110) (2,102) (3,92) (5,79) (7,68) (10,55) mapped to x positions -->
+            <!-- x: 1=67, 2=89, 3=111, 4=133, 5=155, 7=177, 10=210 -->
+            <path d="M67,110 C77,107 83,99 111,92 S133,82 155,76 S185,67 222,55" stroke="#EF4444" stroke-width="2.2"
+              fill="none" stroke-linecap="round" />
+            <!-- Filled area under curve -->
+            <path d="M67,110 C77,107 83,99 111,92 S133,82 155,76 S185,67 222,55 L222,145 L67,145 Z" fill="#EF4444"
+              opacity="0.08" />
+            <!-- Data points -->
+            <circle cx="67" cy="110" r="3" fill="white" stroke="#EF4444" stroke-width="1.5" />
+            <circle cx="111" cy="92" r="3" fill="white" stroke="#EF4444" stroke-width="1.5" />
+            <circle cx="155" cy="76" r="3" fill="white" stroke="#EF4444" stroke-width="1.5" />
+            <circle cx="222" cy="55" r="3" fill="#EF4444" stroke="#EF4444" stroke-width="1.5" />
+
+            <!-- Annotation at end -->
+            <path d="M230 55 L248 42 L268 42" stroke="#EF4444" stroke-width="1" fill="none" />
+            <text x="255" y="38" font-family="Inter,sans-serif" font-size="7.5" font-weight="700" fill="#CF222E"
+              text-anchor="middle">22%</text>
+            <text x="255" y="47" font-family="Inter,sans-serif" font-size="6.5" fill="#CF222E"
+              text-anchor="middle">actual</text>
+
+            <!-- X axis labels -->
+            <text x="67" y="158" font-family="monospace" font-size="7.5" fill="#8C959F" text-anchor="middle">1</text>
+            <text x="111" y="158" font-family="monospace" font-size="7.5" fill="#8C959F" text-anchor="middle">3</text>
+            <text x="155" y="158" font-family="monospace" font-size="7.5" fill="#8C959F" text-anchor="middle">5</text>
+            <text x="222" y="158" font-family="monospace" font-size="7.5" fill="#8C959F" text-anchor="middle">10</text>
+            <text x="152" y="168" font-family="Inter,sans-serif" font-size="7.5" fill="#8C959F"
+              text-anchor="middle">times you checked the dashboard</text>
+          </svg>
+          <div class="diagram-caption">Early Stopping</div>
+          <div class="diagram-sub">Premature peeking leads to increased error rates.</div>
+        </div>
+
+      </div>
+    </div>
+
+    <h3>Problem 1: Fixed testing leads to missed improvements.</h3>
+    <p>
+      In traditional A/B testing, you must fix either the sample size or test duration in advance (which risks
+      collecting too little or too much data), or repeatedly check for statistical
+      significance (which inflates your error rates; this is the classic
+      “p-hacking” problem).
+    </p>
+
+    <img src="tweet_p-hack.png" alt="Tweet about p-hacking"
+      style="display:block;max-width:100%;border-radius:var(--r);border:1px solid var(--border);margin:20px 0 6px" />
+    <p style="font-size:0.75rem;color:var(--text-3);margin-bottom:20px">Popular definition of p-hacking on X</p>
+
+    <div class="callout callout-bad">
+      <div class="callout-label">Risks of p-hacking:</div>
+      <p>
+        Research found that approximately <strong>70% of all A/B test experiments </strong> are actually
+        null.
+        But when an experiment works, the winning variant typically
+        improves the key metric by about 11% over baseline. As such, p-hacking to a false
+        positive can cost you the finding of this improvement i.e. the <strong>opportunity cost</strong>
+        of p-hacking means the <strong>loss in potential improvement</strong>.
+      </p>
+    </div>
+
+    <h3>Problem 2: Inefficient Traffic Split.</h3>
+    <p>
+      Traditional A/B testing does not take the variants’ sequential performance
+      into account, even after it becomes obvious when one is underperforming.
+      A better strategy is to concentrate sampling on the most promising variants
+      as confidence grows, minimizing wasted resources on underperforming variants.
+
+      Metaphor: Think of it as a horse race where you're forced to keep betting
+      equally on a losing horse, even as another has lapped it.
+    </p>
+
+    <hr class="divider" />
+
+    <h3>What would have been the missed opportunities without proper A/B testing?</h3>
+
+    <p>While you can never know the counterfactual variant that was missed, in other words, the outcomes of
+      the alternative option that was not picked, we can look at what successful A/B testing
+      has done and see what might be missed if it is not done correctly.</p>
+    <div class="stat-row">
+      <div class="stat-card">
+        <div class="stat-num ok">$200M</div>
+        <div class="stat-desc">Google famously tested "41 shades of blue," leading annual click-through increase.</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num ok">190 countries</div>
+        <div class="stat-desc">Netflix attributes growth from 2->190 countries in >6 yrs to A/B testing.</div>
+      </div>
+    </div>
+    <p>Imagine of Google had not ran a proper A/B test: that would have led to
+      $200 million of year on year loss for the last 16 years since 2009. Netflix and Duolingo both attribute
+      data-driven experimentation as core tenets of their growth. <strong>Without proper experimentation,
+        Google might have lost $3.5B total and Netflix and Duolingo might not exist.</strong>
+    </p>
+    <hr class="divider" />
+    <p>
+      In this post, we’ll introduce a multi-armed bandit algorithm that enables
+      adaptive experimentation with dynamic stopping, a more efficient approach
+      that addresses both these limitations. We’ll explain how it works, show
+      you how to implement it for your LLM applications using TensorZero, and
+      demonstrate its advantages with real experimental data.
+    </p>
+
+  </section>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════
+     SECTION 2 — THE SMARTER WAY (wide, with simulator)
+═══════════════════════════════════════════════════════════════════ -->
+  <section class="section-wide" id="simulator">
+
+    <div class="prose">
+      <h2>Multi-Armed Bandits for Adaptive Experimentation</h2>
+      <p>
+        “Multi-armed bandits” is a classic mathematical framework from reinforcement learning
+        and sequential decision-making.
+      </p>
+      <p>
+        Imagine a gambler facing a row of slot machines, each with an unknown payout
+        (“reward” distribution) chance. At each turn to play the slots, the gambler has to decide which
+        lever to pull in order to obtain a payout and learn about that machine’s chances of reward.
+      </p>
+      <p>
+        Similarly, multi-armed bandit algorithms use the historical wins (rewards) to guide the
+        decisions about which arm to pull in order to achieve a given objective,
+        such as picking the best option to drive more ad click-throughs.
+
+        In the context of LLM experimentation, an “arm” represents a particular
+        LLM configuration: a choice of model, prompt, hyperparameters, inference
+        strategy, and so on.
+      </p>
+    </div>
+
+    <!-- ── SLOT MACHINE GAME ─────────────────────────────── -->
+    <div class="sim-box" style="margin-top:32px">
+      <div class="sim-top">
+        <div class="sim-title-wrap">
+          <div class="sim-indicator"></div>
+          <span class="sim-title">Discover the Best Machine</span>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="smReset()">↺ Reset</button>
+      </div>
+      <div class="sim-body">
+        <p style="font-size:0.8125rem;color:var(--text-3);margin-bottom:4px">
+          Each machine has a hidden win rate. Pull the arms to find the best one.
+          The curves above update your <strong style="color:var(--text-2)">belief</strong> about each machine's true win
+          rate as evidence accumulates.
+        </p>
+
+        <!-- Machines row -->
+        <div class="sm-machines-row" id="sm-machines-row">
+          <!-- injected by slot-machine.js -->
+        </div>
+
+        <!-- Person figure -->
+        <div class="sm-person-wrap">
+          <svg viewBox="0 0 300 72" width="300" height="72" fill="none" xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true">
+            <circle cx="162" cy="60" r="3" fill="#D8DEE4" />
+            <circle cx="172" cy="51" r="4.5" fill="#D8DEE4" />
+            <circle cx="184" cy="39" r="7" fill="#D8DEE4" />
+            <circle cx="200" cy="23" r="16" fill="white" stroke="#D8DEE4" stroke-width="2" />
+            <text x="200" y="29" font-family="Inter,sans-serif" font-size="18" font-weight="900" fill="#8C959F"
+              text-anchor="middle">?</text>
+            <circle cx="140" cy="46" r="17" fill="#2d2d3a" />
+            <ellipse cx="140" cy="69" rx="15" ry="8" fill="#2d2d3a" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- Score bar -->
+      <div class="sm-score-row">
+        <div class="sm-score-item">
+          <span class="sm-score-key">Coins</span>
+          <span class="sm-score-num" id="sm-coins">60</span>
+        </div>
+        <div class="sm-score-item">
+          <span class="sm-score-key">Pulls</span>
+          <span class="sm-score-num" id="sm-pulls-total">0</span>
+        </div>
+        <span class="sm-score-msg" id="sm-msg">Pull an arm to start exploring.</span>
+      </div>
+    </div>
+
+    <!-- ── MAIN SIMULATOR ─────────────────────────────── -->
+    <div class="sim-box">
+      <div class="sim-top">
+        <div class="sim-title-wrap">
+          <div class="sim-indicator"></div>
+          <span class="sim-title">Adaptive Experiment Simulator</span>
+        </div>
+        <div class="controls">
+          <div class="toggle-group">
+            <button class="tgl on" id="tgl-adaptive" onclick="setMode('adaptive')">Adaptive</button>
+            <button class="tgl" id="tgl-uniform" onclick="setMode('uniform')">Uniform A/B</button>
+          </div>
+          <select id="speed-select" onchange="setSpeed(this.value)">
+            <option value="1">1× speed</option>
+            <option value="3" selected>3× speed</option>
+            <option value="10">10× speed</option>
+            <option value="50">50× speed</option>
+          </select>
+        </div>
+      </div>
+      <div class="sim-body">
+
+        <!-- Variant sliders -->
+        <p style="font-size:0.8125rem;color:var(--text-3);margin-bottom:12px">
+          Set each variant's true success rate, then press Play to watch traffic shift.
+        </p>
+        <div class="variant-rows" id="variant-rows">
+          <!-- injected by JS -->
+        </div>
+
+        <!-- Play controls -->
+        <div class="controls mt-12">
+          <button class="btn btn-primary" id="btn-play" onclick="togglePlay()">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+              <polygon points="2,1 11,6 2,11" />
+            </svg>
+            Play
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="resetSim()">↺ Reset</button>
+        </div>
+
+        <hr class="divider" />
+
+        <!-- Live allocation bars -->
+        <div class="alloc-section">
+          <p style="font-size:0.8125rem;font-weight:600;color:var(--text);margin-bottom:12px">
+            Current traffic allocation
+          </p>
+          <div class="alloc-rows" id="alloc-bars"><!-- injected by JS --></div>
+        </div>
+
+        <!-- Chart -->
+        <div class="chart-wrap" style="height:220px">
+          <canvas id="sim-chart"></canvas>
+        </div>
+
+        <!-- Stats -->
+        <div class="race-stats" id="race-stats">
+          <div class="race-stat">
+            <div class="race-stat-label">Total inferences</div>
+            <div class="race-stat-val" id="stat-total">0</div>
+          </div>
+          <div class="race-stat">
+            <div class="race-stat-label">Leading variant</div>
+            <div class="race-stat-val accent" id="stat-leader">—</div>
+          </div>
+          <div class="race-stat">
+            <div class="race-stat-label">Status</div>
+            <div class="race-stat-val" id="stat-status">Waiting</div>
+          </div>
+        </div>
+
+        <!-- Winner banner -->
+        <div class="winner-bar" id="winner-bar">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="7" stroke="#1A7F37" stroke-width="1.5" />
+            <path d="M5 8l2.5 2.5L11 5" stroke="#1A7F37" stroke-width="1.5" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>
+          <span id="winner-text">Winner identified.</span>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="prose" style="margin-top:8px">
+      <p style="font-size:0.875rem;color:var(--text-3)">
+        Toggle between <strong>Adaptive</strong> and <strong>Uniform A/B</strong> to see the
+        difference in how quickly each identifies the winner. With the default settings,
+        adaptive sampling identifies the winner approximately 37% faster.
+      </p>
+    </div>
+
+  </section>
+
+
+  <!-- ══════════════════════════════════════════════════════════════════
+     SECTION 3 — HOW TENSORZERO IMPLEMENTS IT
+═══════════════════════════════════════════════════════════════════ -->
+  <section class="section" id="algorithm">
+
+    <h2>How TensorZero Solves Both Problems with Multi-Arm Bandits</h2>
+
+    <p>Recap of traditional A/B methods:</p>
+    <div class="two-col" style="margin:24px 0 32px">
+      <div
+        style="background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:var(--r);padding:18px 20px">
+        <div
+          style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--warn);margin-bottom:8px">
+          Problem 1 · Fixed Sample Sizes</div>
+        <p style="font-size:0.8125rem;margin:0;color:var(--text-2)">Fixing sample size upfront risks under-collecting
+          (inconclusive) or over-collecting (wasted).</p>
+      </div>
+      <div
+        style="background:var(--danger-bg);border:1px solid var(--danger-border);border-radius:var(--r);padding:18px 20px">
+        <div
+          style="font-size:0.72rem;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--danger);margin-bottom:8px">
+          Problem 2 · Peeking leads to P-Hacking</div>
+        <p style="font-size:0.8125rem;margin:0;color:var(--text-2)">Frequent looks inflate false positives, which means
+          missing out on million dollar impovements. </p>
+      </div>
+    </div>
+
+    <p>
+      TensorZero uses the <strong>Track-and-Stop (T&S) strategy</strong> to find the best-arm in the multi-arm bandit
+      problem, i.e. finding the
+      best lever to pull among many slot machines.</p>
+
+    <h3>What makes "Track and Stop" unique?</h3>
+    <p>1. Track: The algorithm calculates the optimal proportion of times to play each
+      machine and tries to "track" (match) those proportions.</p>
+    <p>2. Stop: The "Stop" part means that once the algorithm is very confident it has
+      found the best machine (based on statistical evidence), it stops exploring
+      and focuses only on the best one.
+    </p>
+    <h3> "Track and Stop" Addresses P-Hacking</h3>
+    <div class="callout callout-bad">
+      <div class="callout-label">More on why p-hacking occurs:</div>
+      <p>
+        You might be tempted to check your test statistic as experimentation data arrives
+        and stop as soon as your data looks decent (typically p&lt;0.05). However, this practice
+        known as p-hacking or premature stopping <strong>unknowingly inflates your false positive rate </strong>
+        i.e. choose the wrong version. This is known as “p-hacking” or probability hacking.
+      </p>
+    </div>
+
+    <img src="stats.png" alt="TensorZero UI" style="display:block;width:75%;margin:8px auto 0" />
+    <br>
+    <p> 1. <strong>Real Statistical Validity</strong> TensorZero addresses premature peeking, or p-hacking, using an
+      anytime-valid
+      statistical test. It allows you to check results and draw conclusions
+      at any point without breaking statistical rules, ensuring your results are trustworhty and accurate.
+    </p>
+
+
+    <p> 2. <strong> Improving A/B Efficiency and Minimizing Losses </strong> In traditional
+      experimentation, it’s extremely unlikely that you’d land on the optimal proportions for testing (i.e. the exact
+      number of weeks to experiment for) by chance.
+      TensorZero learns the optimal proportions (length of time, and share of traffic) as the experiment progresses over
+      time,
+      and dynamically allocates traffic to converge toward the best variants. In other words, we minimize
+      the number of wrong arm pulls on the slot machine, analogous to <strong>minimizing the number of users who are
+        shown a bad prompt. </strong>
+
+      As soon as the track-and-stop algorithm has identified a winner with sufficient confidence, it stops the
+      experiment and directs all subsequent traffic to that winner.
+    </p>
+    <div class="callout callout-bad">
+      <div class="callout-label">Key Finding:</div>
+      <p>
+        We found in our experiments adaptive sampling reduced the <strong>average time </strong> to correctly identify
+        the best variant by
+        <strong>37% </strong>compared to traditional methods.
+      </p>
+    </div>
+
+  </section>
+
+  <section class="section">
+      <h2>Configuring the Bandit</h2>
+      <p>
+        We typically provide sensible default parameters for most use cases that don't need editing, but you can
+        customize the T&S algorithm for advanced TensorZero users. Here's the intuition:
+      </p>
+
+      <div style="margin-top:28px;display:flex;flex-direction:column;gap:28px">
+        <div>
+          <p>1. <strong>δ (delta): Error tolerance</strong>
+            Similar to a p-value. The probability the algorithm declares the wrong variant the winner. Default is 0.05
+            (5% error rate).
+          </p>
+          <p>
+            Contextualizing: For high-stakes experiments, billing flows, authentication, core conversion paths, you can
+            set it lower like 0.01. For low-stakes tests like copy tweaks or formatting changes, 0.10 could be
+            reasonable.
+          </p>
+        </div>
+        <div>
+          <p>2. <strong>ε (epsilon): Minimum difference between variants</strong>
+            At ε = 0, the algorithm won't stop until it's fully confident one variant is strictly the best.
+            Setting ε > 0 means the algorithm will stop as soon as it finds any variant 
+            performing within ε of the best, which typically means a faster 
+            conclusion in exchange for occasionally missing a marginal win. </p>
+            
+            <p>Example: ε = 0.05 and Variant A has a 72% win rate while Variant B 
+            has a 69% win rate, the algorithm treats them as equivalent and 
+            may declare either the winner, stopping sooner than if it had to
+             prove A was strictly better.
+          </p>
+        </div>
+      </div>
+
+      <hr class="divider" style="margin-top:36px" />
+
+      <!-- ── DURATION ESTIMATOR ─────────────────────── -->
+      <div class="sim-box" style="margin-top:28px">
+        <div class="sim-top">
+          <div class="sim-title-wrap">
+            <div class="sim-indicator" style="background:var(--ok)"></div>
+            <span class="sim-title">Experiment Duration Estimator</span>
+          </div>
+          <span style="font-size:0.78rem;color:var(--text-3)">Illustrative — actual duration depends on true performance
+            gaps</span>
+        </div>
+        <div class="sim-body">
+
+          <p style="font-size:0.8125rem;color:var(--text-3);margin-bottom:20px">
+            Adjust δ and ε to see how they affect estimated experiment length across 4 variants.
+          </p>
+
+          <!-- Delta slider -->
+          <div style="margin-bottom:22px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span class="delta-label">δ (delta): Error tolerance</span>
+              <span class="range-val" id="delta-val">0.05</span>
+            </div>
+            <input type="range" id="delta-slider" min="1" max="20" value="5" step="1" oninput="updateEstimator()" />
+            <div class="param-hint">Low = more confidence needed = more samples</div>
+          </div>
+
+          <!-- Epsilon slider -->
+          <div style="margin-bottom:24px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+              <span class="eps-label">ε (epsilon): Minimum detectable difference</span>
+              <span class="range-val" id="eps-val">0.00</span>
+            </div>
+            <input type="range" id="eps-slider" min="0" max="15" value="0" step="1" oninput="updateEstimator()" />
+            <div class="param-hint">0 = find the strictly best variant · higher = stop sooner, accept small gaps</div>
+          </div>
+
+          <!-- Output -->
+          <div class="est-wrap" id="estimator-output">
+            <div class="est-col highlight">
+              <div class="est-num" id="est-adaptive">—</div>
+              <div class="est-label">Adaptive (Track-and-Stop)</div>
+              <div class="est-badge" id="est-badge">—% faster</div>
+            </div>
+            <div class="est-col">
+              <div class="est-num" id="est-uniform">—</div>
+              <div class="est-label">Uniform A/B (same stopping rule)</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="callout callout-key" style="margin:16px 0 0">
+        <div class="callout-label">Parameter Tradeoff</div>
+        <p>These parameters present a fundamental tradeoff: higher sensitivity and lower error rates require longer
+          experiments.
+
+          Decreasing ε enables detection of better arms but requires more samples to distinguish variants that are close
+          in performance.
+          Decreasing δ (e.g. from 0.05 to 0.01) provides stronger statistical guarantees but requires more samples since
+          more evidence is needed to confidently identify the best variant.</p>
+      </div>
+
+  </section>
+
+  <section class="section-sidecar">
+      <div class="prose" style="margin-bottom:32px">
+        <h2>Try it yourself</h2>
+        <p>
+          The quickstart gets you to a working experiment in under 15 minutes.
+          Works with Claude, GPT-4, Gemini, or any OpenAI-compatible endpoint.
+        </p>
+      </div>
+
+      <div class="sidecar-layout">
+
+        <!-- Left: numbered steps -->
+        <div class="step-list">
+          <div class="step" data-code-section="1">
+            <div class="step-num">1</div>
+            <div class="step-body">
+              <h4>Define your JSON function &amp; variants</h4>
+              <p>Register <code>extract_entities</code> with an output schema, then declare your variants such as
+                two different system prompt templates.</p>
+            </div>
+          </div>
+          <div class="step" data-code-section="2">
+            <div class="step-num">2</div>
+            <div class="step-body">
+              <h4>Add the experimentation block</h4>
+              <p>Set <code>type = "track_and_stop"</code>, list your candidate variants, name a metric, and set
+                <code>update_period_s</code> to control how often allocations recalculate.</p>
+            </div>
+          </div>
+          <div class="step" data-code-section="3">
+            <div class="step-num">3</div>
+            <div class="step-body">
+              <h4>Define your metrics</h4>
+              <p>Use <code>exact_match</code> (boolean) is the optimization metric. Add
+                <code>jaccard_similarity</code> (float) is a tracked metric, not in the experimentation metric block.</p>
+            </div>
+          </div>
+          <div class="step" data-code-section="3">
+            <div class="step-num">4</div>
+            <div class="step-body">
+              <h4>Deploy</h4>
+              <p>The gateway routes live traffic, shifts allocations every <code>update_period_s</code>, and stops the
+                experiment once a winner is identified with statistical confidence.</p>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Right: sticky code block -->
+        <div class="sidecar-sticky">
+          <div class="code-block">
+            <div class="code-bar">
+              <div class="code-bar-dot" style="background:#FF5F57"></div>
+              <div class="code-bar-dot" style="background:#FEBC2E"></div>
+              <div class="code-bar-dot" style="background:#28C840"></div>
+              <span class="code-filename">tensorzero.toml</span>
+            </div>
+            <div class="code-content">
+              <div class="code-section" id="code-section-1">
+                <span class="code-line cc"># ① Your function + variants (as normal)</span>
+                <span class="code-line"><span class="ch">[functions.extract_entities]</span></span>
+                <span class="code-line"><span class="ck">type</span> <span class="ct">= </span><span class="cs">"json"</span></span>
+                <span class="code-line"><span class="ck">output_schema</span> <span class="ct">= </span><span class="cs">"output_schema.json"</span></span>
+                <span class="code-line"></span>
+                <span class="code-line"><span class="ch">[functions.extract_entities.variants.claude-haiku-good-prompt]</span></span>
+                <span class="code-line"><span class="ck">type</span> <span class="ct">= </span><span class="cs">"chat_completion"</span></span>
+                <span class="code-line"><span class="ck">model</span> <span class="ct">= </span><span class="cs">"anthropic::claude-haiku-4-5"</span></span>
+                <span class="code-line"><span class="ck">templates.system.path</span> <span class="ct">= </span><span class="cs">"good_system_template.minijinja"</span></span>
+                <span class="code-line"><span class="ck">json_mode</span> <span class="ct">= </span><span class="cs">"implicit_tool"</span></span>
+                <span class="code-line"></span>
+                <span class="code-line"><span class="ch">[functions.extract_entities.variants.claude-haiku-bad-prompt]</span></span>
+                <span class="code-line"><span class="ck">type</span> <span class="ct">= </span><span class="cs">"chat_completion"</span></span>
+                <span class="code-line"><span class="ck">model</span> <span class="ct">= </span><span class="cs">"anthropic::claude-haiku-4-5"</span></span>
+                <span class="code-line"><span class="ck">templates.system.path</span> <span class="ct">= </span><span class="cs">"bad_system_template.minijinja"</span></span>
+                <span class="code-line"><span class="ck">json_mode</span> <span class="ct">= </span><span class="cs">"implicit_tool"</span></span>
+                <span class="code-line"></span>
+              </div>
+              <div class="code-section" id="code-section-2">
+                <span class="code-line cc"># ② Add this block to run the experiment</span>
+                <span class="code-line hl"><span class="ch">[functions.extract_entities.experimentation]</span></span>
+                <span class="code-line hl"><span class="ck">type</span> <span class="ct">= </span><span class="cs">"track_and_stop"</span></span>
+                <span class="code-line hl"><span class="ck">candidate_variants</span> <span class="ct">= </span><span class="cv">["claude-haiku-good-prompt", "claude-haiku-bad-prompt"]</span></span>
+                <span class="code-line hl"><span class="ck">metric</span> <span class="ct">= </span><span class="cs">"exact_match"</span></span>
+                <span class="code-line hl"><span class="ck">update_period_s</span> <span class="ct">= </span><span class="cv">60</span> <span class="cc"># low for demo (recommended: 300)</span></span>
+                <span class="code-line"></span>
+              </div>
+              <div class="code-section" id="code-section-3">
+                <span class="code-line cc"># ③ Define what "winning" means</span>
+                <span class="code-line"><span class="ch">[metrics.exact_match]</span></span>
+                <span class="code-line"><span class="ck">type</span> <span class="ct">= </span><span class="cs">"boolean"</span></span>
+                <span class="code-line"><span class="ck">level</span> <span class="ct">= </span><span class="cs">"inference"</span></span>
+                <span class="code-line"><span class="ck">optimize</span> <span class="ct">= </span><span class="cs">"max"</span></span>
+                <span class="code-line"></span>
+                <span class="code-line"><span class="ch">[metrics.jaccard_similarity]</span></span>
+                <span class="code-line"><span class="ck">type</span> <span class="ct">= </span><span class="cs">"float"</span></span>
+                <span class="code-line"><span class="ck">level</span> <span class="ct">= </span><span class="cs">"inference"</span></span>
+                <span class="code-line"><span class="ck">optimize</span> <span class="ct">= </span><span class="cs">"max"</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+<br>
+      <h3>Dashboard View</h3>
+      <p>View your results in the <strong>Functions Tab</strong>.</p>
+      <img src="ui.png" alt="TensorZero UI"
+        style="display:block;width:100%;border-radius:var(--r);border:1px solid var(--border);margin-top:8px" />
+            <p style="font-size:0.75rem;color:var(--text-3);margin-bottom:20px">Example dashboard results</p>
+
+      <div class="cta-box" style="margin-top:48px">
+        <h3>Start running smarter experiments</h3>
+        <p>
+          3 lines of code. Open source. Works with whatever model and stack you're already using.
+        </p>
+        <div class="cta-links">
+          <a class="cta-link cta-link-primary" href="https://www.tensorzero.com/docs/quickstart" target="_blank"
+            rel="noopener">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path d="M2 7h10M7 2l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+            Quickstart guide
+          </a>
+          <a class="cta-link cta-link-secondary"
+            href="https://github.com/tensorzero/tensorzero/tree/main/examples/ner-fine-tuning" target="_blank"
+            rel="noopener">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <path
+                d="M7 1C3.686 1 1 3.686 1 7c0 2.654 1.718 4.9 4.1 5.695.3.055.413-.13.413-.288v-1.01c-1.668.362-2.018-.8-2.018-.8-.273-.693-.666-0.878-.666-.878-.544-.373.04-.365.04-.365.602.042.919.618.919.618.535.918 1.404.653 1.746.5.055-.387.21-.653.38-.803-1.332-.152-2.73-.666-2.73-2.966 0-.654.234-1.19.617-1.608-.062-.152-.267-.762.058-1.587 0 0 .503-.16 1.647.614A5.74 5.74 0 017 3.79c.51.002 1.02.069 1.498.202 1.143-.774 1.645-.614 1.645-.614.326.825.12 1.435.06 1.587.383.418.616.954.616 1.608 0 2.306-1.4 2.812-2.736 2.96.215.185.406.55.406 1.108v1.642c0 .16.11.346.415.287A5.995 5.995 0 0013 7c0-3.314-2.686-6-6-6z"
+                fill="currentColor" />
+            </svg>
+            NER example on GitHub
+          </a>
+          <a class="cta-link cta-link-secondary" href="https://www.tensorzero.com/blog/bandits-in-your-llm-gateway/"
+            target="_blank" rel="noopener">
+            Full technical writeup →
+          </a>
+        </div>
+      </div>
+
+    </section>
+
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+    <script src="slot-machine.js"></script>
+    <script src="bandit-sim.js"></script>
+    <script src="ner-charts.js"></script>
+    <script src="estimator.js"></script>
+
+    <script>
+      (function () {
+        const steps = document.querySelectorAll('.step[data-code-section]');
+        const sections = document.querySelectorAll('.code-section');
+
+        function activate(num) {
+          sections.forEach(function (s) {
+            if (s.id === 'code-section-' + num) {
+              s.classList.remove('cs-dimmed');
+            } else {
+              s.classList.add('cs-dimmed');
+            }
+          });
+        }
+
+        // Initialise: section 1 active, others dimmed
+        activate('1');
+
+        const observer = new IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            if (entry.isIntersecting) {
+              activate(entry.target.dataset.codeSection);
+            }
+          });
+        }, { rootMargin: '-15% 0px -70% 0px' });
+
+        steps.forEach(function (step) { observer.observe(step); });
+      })();
+    </script>
+
+</body>
+
+</html>
